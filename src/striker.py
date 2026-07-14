@@ -1,10 +1,11 @@
 """
 Striker dynamics model.
 
-This module calculates the motion of the striker.
+This module calculates the motion of the striker driven by the solenoid.
 """
 
 from constants import STRIKER_MASS_KG
+from solenoid import Solenoid
 
 
 class Striker:
@@ -13,21 +14,27 @@ class Striker:
     """
 
     def __init__(self):
-        self.position = 0.0      # [m]
-        self.velocity = 0.0      # [m/s]
+        # Position [m]
+        self.position = 0.0
 
-    def update(self, force: float, dt: float):
+        # Velocity [m/s]
+        self.velocity = 0.0
+
+        # Solenoid model
+        self.solenoid = Solenoid()
+
+    def update(self, dt: float):
         """
         Update striker state using Euler integration.
 
         Parameters
         ----------
-        force : float
-            Applied force [N]
-
         dt : float
             Time step [s]
         """
+
+        # Calculate force from the solenoid model
+        force = self.solenoid.force(self.position)
 
         # Newton's second law
         acceleration = force / STRIKER_MASS_KG
