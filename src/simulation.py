@@ -59,9 +59,16 @@ def simulate_kick_height(
 
 def find_best_kick_height(striker_velocity_m_s: float) -> HeightResult:
     """Search all plate heights on the ball in 0.1 mm increments."""
+    return max(
+        sweep_kick_heights(striker_velocity_m_s),
+        key=lambda result: result.rolling.total_distance_m,
+    )
+
+
+def sweep_kick_heights(striker_velocity_m_s: float) -> list[HeightResult]:
+    """Simulate every valid contact height on the ball in 0.1 mm increments."""
     number_of_steps = round(2.0 * BALL_RADIUS_M / KICK_HEIGHT_STEP_M)
-    results = [
+    return [
         simulate_kick_height(striker_velocity_m_s, index * KICK_HEIGHT_STEP_M)
         for index in range(number_of_steps + 1)
     ]
-    return max(results, key=lambda result: result.rolling.total_distance_m)
