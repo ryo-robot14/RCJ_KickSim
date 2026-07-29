@@ -20,3 +20,6 @@ __pycache__/
 
 # Generated simulation data
 output/*.csv
+
+# Raw measurements remain on the robot developer's machine by default.
+data/measurements/kick_trials.csv
