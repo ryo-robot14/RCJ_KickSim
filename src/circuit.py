@@ -22,14 +22,15 @@ class Circuit:
 
     capacitor_voltage_v: float = INITIAL_VOLTAGE_V
     current_a: float = 0.0
+    coil_inductance_h: float = COIL_INDUCTANCE_H
 
     def step(self, dt: float) -> float:
         """Advance the circuit by ``dt`` and return the coil current [A]."""
-        if COIL_INDUCTANCE_H > 0.0:
+        if self.coil_inductance_h > 0.0:
             voltage_across_coil_v = (
                 self.capacitor_voltage_v - self.current_a * COIL_RESISTANCE_OHM
             )
-            self.current_a += (voltage_across_coil_v / COIL_INDUCTANCE_H) * dt
+            self.current_a += (voltage_across_coil_v / self.coil_inductance_h) * dt
         else:
             self.current_a = self.capacitor_voltage_v / COIL_RESISTANCE_OHM
 

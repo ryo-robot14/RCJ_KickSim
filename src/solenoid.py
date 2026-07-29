@@ -6,7 +6,11 @@ The force is approximated from the manufacturer's datasheet.
 
 import numpy as np
 
-from constants import COIL_RESISTANCE_OHM, STATIC_FORCE_CURVE_VOLTAGE_V
+from constants import (
+    COIL_RESISTANCE_OHM,
+    SATURATION_KNEE_CURRENT_A,
+    STATIC_FORCE_CURVE_VOLTAGE_V,
+)
 
 # Coil current at which the data-sheet force curve was measured [A].
 RATED_CURRENT_A = STATIC_FORCE_CURVE_VOLTAGE_V / COIL_RESISTANCE_OHM
@@ -59,13 +63,21 @@ class Solenoid:
             )
         )
 
-    def force_at_current(self, position_m: float, current_a: float) -> float:
+    def force_at_current(
+        self,
+        position_m: float,
+        current_a: float,
+        saturation_knee_current_a: float = SATURATION_KNEE_CURRENT_A,
+    ) -> float:
         """Return force [N] for an arbitrary coil current at ``position_m``.
 
-        MODEL ASSUMPTION: scales the rated-current data-sheet force by
-        ``(current_a / RATED_CURRENT_A) ** 2``, the standard relation for an
-        unsaturated reluctance actuator at fixed plunger position. The core
-        may saturate before the 48 V surge current is reached, so this can
-        overestimate peak force until checked against a measured stroke time.
+        Scales the rated-current data-sheet force by the squared ratio of
+        ``tanh(current_a / knee)`` to ``tanh(RATED_CURRENT_A / knee)``. This
+        reduces to the same value as the data sheet at rated current, and
+        saturates (instead of growing as current**2 without bound) above it,
+        approximating core saturation for an unmeasured B-H curve. See
+        SATURATION_KNEE_CURRENT_A for the assumption behind the knee current.
         """
-        return self.force(position_m) * (current_a / RATED_CURRENT_A) ** 2
+        rated_flux_ratio = np.tanh(RATED_CURRENT_A / saturation_knee_current_a)
+        flux_ratio = np.tanh(current_a / saturation_knee_current_a) / rated_flux_ratio
+        return self.force(position_m) * float(flux_ratio) ** 2

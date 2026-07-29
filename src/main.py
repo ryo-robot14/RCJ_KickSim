@@ -3,7 +3,12 @@
 import argparse
 from pathlib import Path
 
-from constants import BALL_RADIUS_M
+from constants import (
+    BALL_RADIUS_M,
+    COIL_INDUCTANCE_H,
+    SATURATION_KNEE_CURRENT_A,
+    TRIGGER_PULSE_DURATION_S,
+)
 from reporting import write_height_sweep_csv
 from simulation import (
     find_best_kick_height,
@@ -29,13 +34,38 @@ def parse_arguments() -> argparse.Namespace:
         metavar="PATH",
         help="destination for height-sweep results",
     )
+    parser.add_argument(
+        "--coil-inductance",
+        type=float,
+        default=COIL_INDUCTANCE_H,
+        metavar="H",
+        help="coil inductance override [H] (default: MODEL ASSUMPTION 0 H)",
+    )
+    parser.add_argument(
+        "--saturation-knee-current",
+        type=float,
+        default=SATURATION_KNEE_CURRENT_A,
+        metavar="A",
+        help="magnetic saturation knee current override [A]",
+    )
+    parser.add_argument(
+        "--trigger-duration",
+        type=float,
+        default=TRIGGER_PULSE_DURATION_S,
+        metavar="S",
+        help="NMOS gate-on (trigger pulse) duration override [s]",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Print a clearly labelled preliminary design result."""
     arguments = parse_arguments()
-    striker = simulate_striker_to_end_of_stroke()
+    striker = simulate_striker_to_end_of_stroke(
+        coil_inductance_h=arguments.coil_inductance,
+        saturation_knee_current_a=arguments.saturation_knee_current,
+        trigger_pulse_duration_s=arguments.trigger_duration,
+    )
     striker_velocity_m_s = (
         striker.velocity_m_s
         if arguments.striker_speed is None
@@ -54,6 +84,11 @@ def main() -> None:
         print("Striker speed source: 48 V capacitor-discharge model (0 H coil inductance assumption).")
     else:
         print("Striker speed source: user-supplied measured value.")
+    print(
+        f"Electrical model: L={arguments.coil_inductance * 1e3:.3f} mH, "
+        f"saturation knee={arguments.saturation_knee_current:.2f} A, "
+        f"trigger duration={arguments.trigger_duration * 1e3:.3f} ms"
+    )
     print()
     print(f"Capacitor-discharge end-of-stroke time: {striker.time_s * 1e3:.3f} ms")
     print(f"Striker speed used             : {striker_velocity_m_s:.3f} m/s")
