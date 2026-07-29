@@ -31,7 +31,8 @@ The result for every 0.1 mm kick-plate height is written to
 Sheets to compare height, ball speed, spin, slip, and estimated run-out.
 
 When a striker speed at ball contact has been measured, use it instead of the
-temporary 24 V data-sheet model:
+48 V capacitor-discharge model (coil inductance is not yet measured, so
+current is assumed resistance-limited):
 
 ```bash
 python3 src/main.py --striker-speed 4.20

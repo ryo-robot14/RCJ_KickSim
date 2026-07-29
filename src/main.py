@@ -51,11 +51,11 @@ def main() -> None:
     print("=" * 46)
     print("WARNING: absolute distance is uncalibrated.")
     if arguments.striker_speed is None:
-        print("Striker speed source: 24 V static data-sheet curve (temporary).")
+        print("Striker speed source: 48 V capacitor-discharge model (0 H coil inductance assumption).")
     else:
         print("Striker speed source: user-supplied measured value.")
     print()
-    print(f"Static-model end-of-stroke time: {striker.time_s * 1e3:.3f} ms")
+    print(f"Capacitor-discharge end-of-stroke time: {striker.time_s * 1e3:.3f} ms")
     print(f"Striker speed used             : {striker_velocity_m_s:.3f} m/s")
     print()
     print(f"Best plate height from floor: {best.height_from_floor_m * 1e3:.2f} mm")

@@ -31,10 +31,11 @@ class HeightResult:
 
 
 def simulate_striker_to_end_of_stroke() -> StrikerResult:
-    """Run the current *24 V static-curve* striker model to 10 mm stroke.
+    """Run the 48 V capacitor-discharge striker model to 10 mm stroke.
 
-    This is deliberately isolated: the later 48 V capacitor-discharge model can
-    replace this function without altering the impact or rolling models.
+    This is deliberately isolated from the impact and rolling models, so a
+    future refinement (e.g. a measured coil inductance) can replace it
+    without touching them.
     """
     striker = Striker()
     time_s = 0.0
