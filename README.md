@@ -18,6 +18,9 @@ Author: Ryo KAIJIRI
 
 Started: July 2026
 
+See `docs/02_UsageGuide.md` for the full physical model basis and a
+detailed usage reference for every script.
+
 ## Run the preliminary kick-height sweep
 
 From the repository root:
