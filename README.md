@@ -1,70 +1,235 @@
 # RCJ_KickSim
 
-Physics simulator for RoboCup Junior Soccer Open solenoid kickers.
+---
 
-## Objective
+## 概要
 
-Develop a physics-based simulator capable of predicting:
+RCJ_KickSim は、RoboCup Junior Soccer Open 用ソレノイドキッカーの設計・最適化を目的とした物理シミュレータです。
 
-- Striker motion
-- Ball velocity
-- Ball spin
-- Rolling distance
-- Optimal kick height
+ソレノイドの電気回路からストライカー運動、ボールとの衝突、転がり運動までを物理モデルで再現し、キック性能を予測します。
 
-## Development
+### 主な機能
 
-Author: Ryo KAIJIRI
+- ソレノイドストライカーの運動シミュレーション
+- コンデンサ放電回路のシミュレーション
+- ボールとの衝突解析
+- ボールの回転・転がり解析
+- キック板高さの最適化
+- 感度解析
+- 実測データとの比較
 
-Started: July 2026
+---
 
-See `docs/02_UsageGuide.md` for the full physical model basis and a
-detailed usage reference for every script.
+## ディレクトリ構成
 
-## Run the preliminary kick-height sweep
+```text
+RCJ_KickSim
+│
+├── src/
+├── data/
+├── docs/
+├── output/
+└── tests/
+```
 
-From the repository root:
+---
+
+## 使用方法
+
+リポジトリを取得します。
+
+```bash
+git clone https://github.com/ryo-robot14/RCJ_KickSim.git
+cd RCJ_KickSim
+```
+
+シミュレーションを実行します。
 
 ```bash
 python3 src/main.py
 ```
 
-The result for every 0.1 mm kick-plate height is written to
-`output/kick_height_sweep.csv`. Open that CSV in Numbers, Excel, or Google
-Sheets to compare height, ball speed, spin, slip, and estimated run-out.
+結果は
 
-When a striker speed at ball contact has been measured, use it instead of the
-48 V capacitor-discharge model (coil inductance is not yet measured, so
-current is assumed resistance-limited):
-
-```bash
-python3 src/main.py --striker-speed 4.20
+```
+output/kick_height_sweep.csv
 ```
 
-The current rolling-distance result is a screening estimate. It requires
-calibration against the actual RCJ field before being used as an absolute
-distance prediction.
+に出力されます。
 
-## Determine the best height without measuring striker speed
+---
 
-Striker speed is difficult to measure during a solenoid kick and is not needed
-to determine the best height experimentally.  Record the stopped distance for
-several kicks at each fixed plate height, then run the included analyser.
+## 設定変更
 
-1. Copy `data/measurements/kick_trials_template.csv` to
-   `data/measurements/kick_trials.csv`.
-2. Use `height_from_floor_mm` for the height of the plate's force line above the
-   carpet.  Measure the ball's centre position before the kick and its centre
-   position after it stops; their separation is `roll_distance_m`.
-3. Add at least three trials at every height, keeping voltage, capacitor charge,
-   ball, and field surface unchanged.
-4. Analyse the result:
+シミュレーション条件を変更する場合は
 
-```bash
-python3 src/analyze_trials.py data/measurements/kick_trials.csv
+```
+src/config.py
 ```
 
-For a fast first pass, test 26, 28, 30, 32, 34, and 36 mm from the floor.  Then
-test the best region in 0.5 mm increments with five trials per height.  This
-directly gives the design height even before the 48 V electrical model has been
-calibrated.
+のみ編集してください。
+
+主な設定項目
+
+- ボール
+- ストライカー
+- ソレノイド
+- 電源
+- コンデンサ容量
+- コイル抵抗
+- 摩擦係数
+- シミュレーション条件
+
+通常、それ以外のソースコードを編集する必要はありません。
+
+---
+
+## ドキュメント
+
+詳細な説明は
+
+- docs/01_ProjectPlan.md
+- docs/02_UsageGuide.md
+
+をご覧ください。
+
+---
+
+## 開発状況
+
+### 実装済み
+
+- ソレノイドモデル
+- コンデンサ放電モデル
+- ストライカー運動
+- 衝突モデル
+- 転がりモデル
+- キック高さ探索
+- 感度解析
+- CSV出力
+
+### 今後の予定
+
+- 実測データによるパラメータ同定
+- CB1037の実測推力モデル
+- GUIの実装
+
+---
+
+## Overview
+
+RCJ_KickSim is a physics-based simulator for designing and optimizing solenoid kickers used in RoboCup Junior Soccer Open robots.
+
+The simulator models the complete kicking process, from capacitor discharge and solenoid dynamics to striker motion, ball impact, and rolling behaviour.
+
+### Features
+
+- Solenoid striker simulation
+- Capacitor-discharge circuit model
+- Ball impact model
+- Ball rolling simulation
+- Kick-height optimization
+- Sensitivity analysis
+- Experimental data analysis
+
+---
+
+## Repository Structure
+
+```text
+RCJ_KickSim
+│
+├── src/
+├── data/
+├── docs/
+├── output/
+└── tests/
+```
+
+---
+
+## Getting Started
+
+Clone the repository.
+
+```bash
+git clone https://github.com/ryo-robot14/RCJ_KickSim.git
+cd RCJ_KickSim
+```
+
+Run the simulator.
+
+```bash
+python3 src/main.py
+```
+
+Simulation results are written to
+
+```
+output/kick_height_sweep.csv
+```
+
+---
+
+## Configuration
+
+Most users only need to edit
+
+```
+src/config.py
+```
+
+to match their own robot.
+
+Typical parameters include
+
+- Ball properties
+- Striker properties
+- Solenoid specifications
+- Supply voltage
+- Capacitor capacity
+- Coil resistance
+- Friction coefficients
+- Numerical settings
+
+No other source files normally need to be modified.
+
+---
+
+## Documentation
+
+See
+
+- docs/01_ProjectPlan.md
+- docs/02_UsageGuide.md
+
+for detailed explanations.
+
+---
+
+## Current Status
+
+### Implemented
+
+- Solenoid model
+- Capacitor-discharge model
+- Striker dynamics
+- Ball impact
+- Rolling model
+- Kick-height sweep
+- Sensitivity analysis
+- CSV export
+
+### Planned
+
+- Parameter identification
+- Measured CB1037 force model
+- GUI
+
+---
+
+## Author
+
+**Ryo KAIJIRI**
+
+Started in **July 2026**.

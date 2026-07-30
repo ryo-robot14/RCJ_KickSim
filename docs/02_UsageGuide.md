@@ -1,251 +1,375 @@
-# RCJ_KickSim 使い方ガイド
-
-このドキュメントは「このツールが何の情報をもとに何を計算しているか」と「各スクリプトの詳しい使い方」をまとめたものです。プロジェクト全体の開発段階は `01_ProjectPlan.md` を参照してください。
+# RCJ_KickSim User Guide
 
 ---
 
-## 1. このツールでできること
+## 概要
 
-RCJ_KickSim には、目的の異なる3つの独立したツールがあります。
+RCJ_KickSim のインストール方法、基本的な使い方、および各スクリプトの役割を説明します。
 
-| スクリプト | 何をするか | 電気モデルを使うか |
-|---|---|---|
-| `src/main.py` | ソレノイドの物理モデルから蹴り高さごとの結果を計算し、CSVに出力 | 使う |
-| `src/plot_sweep.py` | `main.py`が出力したCSVをターミナル上でグラフ表示 | 使わない（CSVを読むだけ） |
-| `src/analyze_trials.py` | 実際に蹴って測定した停止距離から、最適な高さを統計的に求める | 使わない（実測データのみ） |
-| `src/sensitivity.py` | 未計測の仮定値をランダムに振り、結果がどれだけブレるか・どの仮定が一番効くかを調べる | 使う（内部で`main.py`と同じパイプラインを繰り返し実行） |
+本書は「シミュレータを使う人」のためのガイドです。
 
-`main.py`は理論モデルによる**予測**、`analyze_trials.py`は実機の**実測**による検証、という役割分担です。理論モデルの絶対値がまだ校正されていない段階でも、`analyze_trials.py`を使えば実機で直接ベストな高さを決められます。
+物理モデルの詳細については **03_PhysicsModel.md**、設定項目については **04_Configuration.md**、開発者向け情報については **05_DeveloperGuide.md** を参照してください。
 
 ---
 
-## 2. シミュレーションの物理モデル（何の情報をもとにしているか）
+# 1. インストール
 
-すべての物理定数は `src/constants.py` に集約されています。
+## 必要環境
 
-### 2.1 ボール（ゴルフボール想定）
-
-| 項目 | 値 |
-|---|---|
-| 質量 | 45.93 g |
-| 半径 | 21.35 mm |
-| 慣性モーメント | (2/5) × 質量 × 半径²（一様な球体として計算） |
-
-### 2.2 ストライカーと電気系（L字プレート＋ソレノイド）
-
-| 項目 | 値 | 出典 |
-|---|---|---|
-| ストライカー質量 | 26 g | 実測/設計値 |
-| ストローク | 10 mm | CB1037データシート |
-| キャパシタ容量 | 4000 µF | `kicker-001-20260618`回路図 |
-| 初期電圧 | 48 V | 同上（昇圧回路の出力電圧） |
-| コイル抵抗 | 10 Ω | CB1037データシート（"CB10370100"品番） |
-| コイルインダクタンス | **0 H（仮定）** | データシート非公開。位置依存性が強く実測が必要 |
-| 力カーブの測定条件 | 24 V（定格電流2.4 A = 24V/10Ω） | CB1037データシートの「57.6W・6%duty」曲線 |
-| 磁気飽和ニー電流 | **3.6 A（仮定）** | 飽和特性のデータなし。定格電流(2.4A)の1.5倍という工学的な仮置き |
-| トリガーパルス幅 | **0.5 s（意図的に長め、実質無効化）** | 回路図のワンショット回路の式からは約1msと読み取れるが、圧縮画像からの概算のため未確定 |
-
-コイル電流は `src/circuit.py` の `Circuit` クラスが、48Vのキャパシタが10Ωのコイルへ放電していく様子を計算します。インダクタンスを0と仮定しているため、現状は単純な **RC放電**（電流 = 電圧 / 抵抗、瞬時に立ち上がる）として扱われています。将来、オシロスコープ等で電流波形を実測すれば `COIL_INDUCTANCE_H` を書き換えるだけで、本格的なR-L-C過渡応答に切り替わります。
-
-ソレノイドの力は `src/solenoid.py` が、CB1037データシートのストローク位置ごとの力カーブ（24V・2.4A時点の実測値）を、実際に流れている電流に応じてスケールして計算します。`F(x, I) = F_datasheet(x) × (tanh(I/knee) / tanh(I_rated/knee))²` という飽和曲線を使っており、定格電流(2.4A)では元のデータシート値と一致し、48V時の突入電流（約4.8A）のような高電流では力の伸びが頭打ちになります（無制限に`I²`で伸びる旧モデルより保守的）。飽和が始まる電流（ニー電流）自体は未計測の仮定値です。
-
-`src/striker.py` はさらに、回路図のワンショット回路（NMOSのゲートがオンになっている時間）を模した`trigger_pulse_duration_s`を持っており、この時間を過ぎるとコイル電流を強制的に0にします（実際のスイッチが切れて放電が止まる状況を表現）。デフォルトは0.5秒とストロークが完了する数ミリ秒より十分長く設定してあり、この機能は**デフォルトでは無効**（挙動を変えない）ですが、`main.py --trigger-duration <秒>`で明示的に短く指定すれば、パルス幅が足りずストロークを完走できない場合の挙動を確認できます。あまりに短い値を指定すると、ストロークが完了せずタイムアウトする安全装置として`RuntimeError`が発生します。
-
-### 2.3 衝撃モデル（ストライカーとボールの衝突）
-
-| 項目 | 値 |
-|---|---|
-| 反発係数 | 0.65（**仮定値**。高速度カメラでの実測が必要） |
-
-`src/impact.py` が、L字プレートの接触高さ（ボール中心からの上下オフセット）に応じて、撃力ベースでボールへの並進速度とバックスピンを同時に計算します。
-
-> **検討したが見送った項目: 衝突時の接線方向摩擦。** 撃力を「ボール中心から高さbの位置にある水平な力線」として簡略化している現在のモデルでは、幾何学的に接触点の接線（垂直）方向の相対滑り速度がちょうどゼロになり、摩擦係数を追加しても効果が出ないことが分かりました。意味のある形で実装するには、L字プレートの縁の正確な接触点形状（データなし）が別途必要なため、今回は見送っています。
-
-### 2.4 転がりモデル（床面でのスリップ→転がり）
-
-| 項目 | 値 |
-|---|---|
-| 床との滑り摩擦係数 | 0.35（**仮定値**。RCJフィールドでの実測が必要） |
-| 純転がり時の減速度 | 1.00 m/s²（**仮定値**。同上） |
-
-`src/rolling.py` が、蹴られた直後のスリップ区間（接触点の速度がゼロになるまで）と、その後の純転がり区間を分けて計算し、停止するまでの走行距離を出します。
-
-### 2.5 数値計算の設定
-
-| 項目 | 値 |
-|---|---|
-| 時間刻み | 0.01 ms（電気・機械系の数値積分に使用） |
-| 高さの刻み | 0.1 mm（高さスイープの解像度） |
+- Python 3.11以上（推奨：3.14）
+- Git
+- VSCode（推奨）
 
 ---
 
-## 3. 計算の流れ（`main.py`実行時のパイプライン）
+## リポジトリの取得
 
-1. **`Circuit.step(dt)`**: キャパシタ電圧からコイル電流を計算し、キャパシタを少し放電させる
-2. **`Solenoid.force_at_current(position, current)`**: その電流とストライカー位置から発生する力を計算
-3. **`Striker.update(dt)`**: 力から加速度→速度→位置を積分。ストロークの10mmに達するまで1と2と3を繰り返す
-4. **`impact_ball(striker_velocity, height_above_center)`**: ストロークの終端速度と接触高さから、ボールの初速と角速度（スピン）を計算
-5. **`roll_to_stop(ball)`**: スリップ区間と純転がり区間を計算し、停止までの走行距離を出す
-6. **高さスイープ**: 0〜42.7mm（ボールの直径）を0.1mm刻みで1〜5を繰り返し、最も走行距離が伸びる高さを探す
+```bash
+git clone https://github.com/ryo-robot14/RCJ_KickSim.git
+cd RCJ_KickSim
+```
 
 ---
 
-## 4. 各スクリプトの詳しい使い方
-
-### 4.1 `src/main.py` — 理論モデルによる高さスイープ
+## 動作確認
 
 ```bash
 python3 src/main.py
 ```
 
-**オプション**
+正常に実行されると
+
+```
+output/kick_height_sweep.csv
+```
+
+が生成されます。
+
+---
+
+# 2. ディレクトリ構成
+
+```
+RCJ_KickSim/
+
+src/
+data/
+docs/
+output/
+
+README.md
+LICENSE
+```
+
+---
+
+# 3. 基本的な使い方
+
+通常は
+
+```
+src/config.py
+```
+
+のみ編集します。
+
+その後
+
+```bash
+python3 src/main.py
+```
+
+を実行してください。
+
+結果は
+
+```
+output/
+```
+
+へ保存されます。
+
+---
+
+# 4. 各スクリプト
+
+## main.py
+
+理論シミュレーションを実行します。
+
+```bash
+python3 src/main.py
+```
+
+---
+
+### オプション
 
 | オプション | 説明 |
-|---|---|
-| `--striker-speed <m/s>` | 電気モデルの代わりに、実測済みのストライカー速度を使う |
-| `--csv <path>` | 出力CSVの保存先（デフォルト: `output/kick_height_sweep.csv`） |
-| `--coil-inductance <H>` | コイルインダクタンスの上書き（デフォルト: 仮定値0H） |
-| `--saturation-knee-current <A>` | 磁気飽和ニー電流の上書き（デフォルト: 仮定値3.6A） |
-| `--trigger-duration <s>` | トリガーパルス幅の上書き（デフォルト: 0.5s、実質無効） |
+|------------|------|
+| --csv | 出力CSV |
+| --striker-speed | 実測速度を使用 |
+| --coil-inductance | コイルLを変更 |
+| --trigger-duration | 通電時間変更 |
+| --saturation-knee-current | 飽和電流変更 |
 
-**ターミナルへの出力例と意味**
+---
 
-```
-Capacitor-discharge end-of-stroke time: 2.470 ms   ← ストロークを打ち切るまでの時間
-Striker speed used             : 6.707 m/s          ← ボール接触時のストライカー速度
-Best plate height from floor: 33.20 mm              ← 走行距離が最大になる高さ（床基準）
-Best plate height above centre: 11.85 mm            ← 同じ高さをボール中心基準で表示
-Theoretical no-slip height   : 29.89 mm             ← 理論上スリップが起きない高さ（参考値）
-Ball release speed           : 3.129 m/s            ← 最適高さで蹴った直後のボール速度
-Ball angular velocity        : -203.4 rad/s         ← 同、角速度（負=バックスピン）
-Initial slip speed           : -1.2127 m/s          ← 接触点の初期スリップ速度
-Preliminary run-out distance : 6.372 m              ← 停止までの推定走行距離（未校正）
-```
+## plot_sweep.py
 
-**出力CSV (`output/kick_height_sweep.csv`) の列**
-
-| 列名 | 意味 |
-|---|---|
-| `height_from_floor_mm` | 床からのプレート高さ [mm] |
-| `height_above_center_mm` | ボール中心からのオフセット [mm] |
-| `ball_release_speed_m_s` | ボールの初速 [m/s] |
-| `ball_angular_velocity_rad_s` | ボールの角速度 [rad/s]（負=バックスピン） |
-| `initial_slip_speed_m_s` | 接触点の初期スリップ速度 [m/s] |
-| `sliding_time_ms` | スリップが収まるまでの時間 [ms] |
-| `sliding_distance_m` | スリップ区間の走行距離 [m] |
-| `rolling_velocity_m_s` | 純転がり開始時の速度 [m/s] |
-| `rolling_distance_m` | 純転がり区間の走行距離 [m] |
-| `total_distance_m` | 停止までの合計走行距離 [m] |
-
-### 4.2 `src/plot_sweep.py` — ターミナルでのグラフ表示
+CSVをグラフ表示します。
 
 ```bash
 python3 src/plot_sweep.py
 ```
 
-**オプション**
+---
 
-| オプション | 説明 |
-|---|---|
-| `csv`（位置引数） | 読み込むCSV（デフォルト: `output/kick_height_sweep.csv`） |
-| `--column <列名>` | プロットする列（デフォルト: `total_distance_m`。上表の列名がすべて指定可） |
-| `--rows <数>` | グラフの縦方向の行数（デフォルト20） |
-| `--width <数>` | グラフの横方向の文字数（デフォルト: ターミナル幅） |
+## analyze_trials.py
 
-**使用例**
-
-```bash
-python3 src/plot_sweep.py --column initial_slip_speed_m_s
-python3 src/plot_sweep.py --column ball_angular_velocity_rad_s --rows 15
-```
-
-出力の最終行 `Max at height` は、指定した列が最大値を取る高さです（`total_distance_m`を指定した場合のみ「最適高さ」として意味を持ち、他の列では単に「その列が最大になる高さ」という意味です）。
-
-### 4.3 `src/analyze_trials.py` — 実測データによる検証
-
-理論モデルを介さず、実際に蹴って止まった距離だけから最適高さを求めます。ストライカー速度の実測が難しい場合に有効です。
-
-**手順**
-
-1. `data/measurements/kick_trials_template.csv` を `data/measurements/kick_trials.csv` にコピー
-2. 各行に以下を記入
-   - `height_from_floor_mm`: プレートの力線が床から何mmの高さか
-   - `roll_distance_m`: 蹴る前のボール中心位置と、止まった後のボール中心位置の差
-   - `trial`, `notes`: 任意（何回目の試行か、メモ）
-3. 電圧・キャパシタ充電量・ボール・フィールド表面を揃えたまま、**各高さにつき最低3回**試行
-4. 実行:
+実測データを解析します。
 
 ```bash
 python3 src/analyze_trials.py data/measurements/kick_trials.csv
 ```
 
-**推奨する測定手順**: まず26, 28, 30, 32, 34, 36mmの6点を粗く試し、良かった範囲を0.5mm刻み・各5回で追い込む。
+---
 
-**出力**: 高さごとの平均走行距離・標準偏差の一覧表と、実測ベースでの最適高さ。試行回数が3回未満の高さには警告が表示されます。
+## sensitivity.py
 
-### 4.4 `src/sensitivity.py` — 未計測パラメータの感度分析
-
-反発係数・摩擦係数・転がり減速度・コイルインダクタンスの4つの仮定値を、それぞれ想定範囲内でランダムに同時に振り、高さスイープ全体を繰り返し実行します。実測を1件も取らずに「結果がどれだけ不確かか」「どの仮定を測るのが一番効くか」が分かります。
+モンテカルロ感度解析を実行します。
 
 ```bash
 python3 src/sensitivity.py
 ```
 
-**オプション**
+---
 
-| オプション | 説明 |
+# 5. 出力CSV
+
+出力されるCSVには以下が含まれます。
+
+|列名|内容|
 |---|---|
-| `--samples <数>` | モンテカルロの試行回数（デフォルト300） |
-| `--seed <数>` | 乱数シード（デフォルト0、同じシードなら同じ結果を再現） |
-
-**振っている範囲**（すべて探索用の仮の幅で、測定値ではない）
-
-| パラメータ | 範囲 |
-|---|---|
-| コイルインダクタンス | 0〜20 mH |
-| 反発係数 | 0.45〜0.85 |
-| 床の滑り摩擦係数 | 0.20〜0.50 |
-| 純転がり減速度 | 0.5〜1.5 m/s² |
-
-**出力の読み方**: `Best height`/`Total distance`の行が、300通りの組み合わせ全体での最適高さ・走行距離の範囲（最小〜最大、平均、標準偏差）。下の相関係数の表は、各パラメータと「最適高さ」の相関の強さを絶対値の大きい順に並べたもので、`|r|`が大きいほど、その仮定を実測で確定させたときに設計結論（最適高さ）が動きやすいことを意味します。
-
-実行例（300サンプル）では、`rolling_deceleration_m_s2`（r≈+0.44）と`friction_coefficient`（r≈-0.41）が最適高さへの影響が大きく、`coil_inductance_h`と`restitution`の影響は相対的に小さいという結果が得られました。つまり、電気系のインダクタンス実測よりも、床面の摩擦・転がり抵抗の実測を優先する方が設計結論への影響が大きいことを示しています。
+|height_from_floor_mm|キック高さ|
+|ball_release_speed_m_s|初速度|
+|ball_angular_velocity_rad_s|角速度|
+|sliding_distance_m|滑り距離|
+|rolling_distance_m|転がり距離|
+|total_distance_m|停止距離|
 
 ---
 
-## 5. 現状の校正状況（何が仮定値で、何を測れば精度が上がるか）
+# 6. 推奨ワークフロー
 
-| 仮定値 | 現在の値 | 場所 | 校正方法 |
-|---|---|---|---|
-| コイルインダクタンス | 0 H | `constants.py` | シャント抵抗＋オシロスコープで電流波形を実測、またはLCRメーター |
-| 磁気飽和ニー電流 | 3.6 A | `constants.py` | 固定位置での電流-力カーブを実測 |
-| トリガーパルス幅 | 0.5 s（実質無効） | `constants.py` | 回路図のR9/C7の実際の定数値を基板上で確認・実測 |
-| ストライカー-ボール反発係数 | 0.65 | `constants.py` | 高速度カメラでの衝突前後速度の実測 |
-| 床の滑り摩擦係数 | 0.35 | `constants.py` | RCJフィールド上でのスリップ距離実測 |
-| 純転がり減速度 | 1.00 m/s² | `constants.py` | RCJフィールド上での転がり区間の減速実測 |
+① `config.py` を編集
 
-これらが校正されるまで、`main.py`が出す**走行距離の絶対値**は参考値です。「どの高さが相対的に良いか」という傾向はある程度信頼できますが、絶対距離を設計判断に使う前に `analyze_trials.py` による実測での裏付けを取ることが推奨されます。`sensitivity.py`の相関結果を見ると、上表のうち床面の2項目（摩擦係数・転がり減速度）を優先して測るのが最も効果的です。
+↓
+
+② `main.py`
+
+↓
+
+③ CSV確認
+
+↓
+
+④ `plot_sweep.py`
+
+↓
+
+⑤ 実機測定
+
+↓
+
+⑥ `analyze_trials.py`
+
+↓
+
+⑦ 必要なら `sensitivity.py`
 
 ---
 
-## 6. ディレクトリ構成
+## Overview
+
+This guide explains how to install and use RCJ_KickSim.
+
+It is intended for simulator users.
+
+For implementation details, see **03_PhysicsModel.md**.
+
+For configuration parameters, see **04_Configuration.md**.
+
+For developers, see **05_DeveloperGuide.md**.
+
+---
+
+# 1. Installation
+
+## Requirements
+
+- Python 3.11 or newer (3.14 recommended)
+- Git
+- VSCode (recommended)
+
+---
+
+## Clone Repository
+
+```bash
+git clone https://github.com/ryo-robot14/RCJ_KickSim.git
+cd RCJ_KickSim
+```
+
+---
+
+## Verify Installation
+
+```bash
+python3 src/main.py
+```
+
+The simulator should generate
 
 ```
+output/kick_height_sweep.csv
+```
+
+---
+
+# 2. Directory Structure
+
+```
+RCJ_KickSim/
+
 src/
-  constants.py      物理定数（すべてのモデルの入力値）
-  circuit.py        キャパシタ放電回路モデル
-  solenoid.py       CB1037の力カーブ（位置・電流依存）
-  striker.py        ストライカーの運動方程式
-  ball.py           ボールの状態（速度・角速度）
-  impact.py         ストライカー-ボール衝突モデル
-  rolling.py        スリップ→転がりモデル
-  simulation.py      高さスイープの実行ロジック
-  reporting.py      CSV出力
-  main.py           理論モデルのエントリーポイント
-  plot_sweep.py     ターミナルグラフ表示
-  analyze_trials.py 実測データ解析
-  sensitivity.py    未計測パラメータの感度分析
-data/measurements/  実測データ（テンプレートと実データ）
-output/             生成されたCSV（gitで無視）
-docs/               このガイドとプロジェクト計画
+data/
+docs/
+output/
+
+README.md
+LICENSE
 ```
+
+---
+
+# 3. Basic Usage
+
+Normally, only
+
+```
+src/config.py
+```
+
+needs to be edited.
+
+Run
+
+```bash
+python3 src/main.py
+```
+
+Results will be written to
+
+```
+output/
+```
+
+---
+
+# 4. Scripts
+
+## main.py
+
+Runs the complete simulation.
+
+```bash
+python3 src/main.py
+```
+
+---
+
+### Options
+
+|Option|Description|
+|-------|-----------|
+|--csv|Output CSV|
+|--striker-speed|Measured striker speed|
+|--coil-inductance|Override coil inductance|
+|--trigger-duration|Override trigger duration|
+|--saturation-knee-current|Override saturation current|
+
+---
+
+## plot_sweep.py
+
+Plots CSV results.
+
+```bash
+python3 src/plot_sweep.py
+```
+
+---
+
+## analyze_trials.py
+
+Analyzes experimental data.
+
+```bash
+python3 src/analyze_trials.py data/measurements/kick_trials.csv
+```
+
+---
+
+## sensitivity.py
+
+Runs Monte Carlo sensitivity analysis.
+
+```bash
+python3 src/sensitivity.py
+```
+
+---
+
+# 5. Output CSV
+
+The generated CSV includes
+
+|Column|Description|
+|------|-----------|
+|height_from_floor_mm|Kick height|
+|ball_release_speed_m_s|Ball speed|
+|ball_angular_velocity_rad_s|Angular velocity|
+|sliding_distance_m|Sliding distance|
+|rolling_distance_m|Rolling distance|
+|total_distance_m|Total distance|
+
+---
+
+# 6. Recommended Workflow
+
+Edit `config.py`
+
+↓
+
+Run `main.py`
+
+↓
+
+Check CSV
+
+↓
+
+Run `plot_sweep.py`
+
+↓
+
+Perform experiments
+
+↓
+
+Run `analyze_trials.py`
+
+↓
+
+Run `sensitivity.py` if necessary
